@@ -53,6 +53,7 @@ from .app import (
     _sanitize_fts_query,
     _sender_display_name,
     build_mcp_server,
+    sweep_stale_agents,
 )
 from .config import clear_settings_cache, get_settings
 from .db import (
@@ -3248,6 +3249,165 @@ def clear_and_reset_everything(
         console.print(f"[dim]Removed database files:[/] {', '.join(str(p) for p in deleted_db_files)}")
     if deleted_storage:
         console.print(f"[dim]Cleared storage root entries:[/] {', '.join(str(p.name) for p in deleted_storage)}")
+
+
+@app.command("sweep-stale-agents")
+def sweep_stale_agents_cmd(
+    threshold_hours: Annotated[
+        float,
+        typer.Option(
+            "--threshold-hours",
+            help="Retire agents whose last activity is older than this many hours.",
+        ),
+    ] = 12.0,
+    project: Annotated[
+        Optional[str],
+        typer.Option(
+            "--project",
+            "-p",
+            help="Scope the sweep to a single project (slug or human key). Default: all projects.",
+        ),
+    ] = None,
+    name: Annotated[
+        Optional[str],
+        typer.Option(
+            "--name",
+            "-n",
+            help=(
+                "Admin override: retire ONE named agent regardless of age or "
+                "registration token. Requires --project. Use this to clear a "
+                "specific ghost/stale agent that no live session holds the token for."
+            ),
+        ),
+    ] = None,
+    include_deregistered: Annotated[
+        bool,
+        typer.Option(
+            "--include-deregistered",
+            help=(
+                "Also retire agents carrying the '[DEREGISTERED ...]' marker, "
+                "regardless of age (backfills rows the old deregister_agent bug "
+                "left on the active roster)."
+            ),
+        ),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Show what would be retired without writing anything."),
+    ] = False,
+) -> None:
+    """Admin-scoped stale-agent cleanup — retire (soft-delete) agents WITHOUT the target's token.
+
+    Stale "active" agents (crashed sessions, ghosts, pre-fix self-deregistrations)
+    accumulate on the active roster and wall broadcast via the contact-approval
+    check. The server runs this sweep automatically on a timer; this command is
+    the manual / scripted escape hatch and the documented recovery procedure.
+
+    Examples:
+
+      sweep-stale-agents --dry-run
+
+      sweep-stale-agents --include-deregistered
+
+      sweep-stale-agents --project off-earth-data --name RubyGlacier
+    """
+    settings = get_settings()
+
+    # --- Admin override: retire one named agent, no token required ---------
+    if name is not None:
+        if not project:
+            console.print("[red]--name requires --project (slug or human key).[/]")
+            raise typer.Exit(code=1)
+
+        async def _execute_named() -> dict[str, Any]:
+            await ensure_schema(settings)
+            proj = await _get_project_record(project)
+            agent = await _get_agent_record(proj, name)
+            already = agent.retired_at is not None
+            if not already and not dry_run:
+                async with get_session() as session:
+                    db_agent = await session.get(Agent, agent.id)
+                    if db_agent is not None:
+                        db_agent.retired_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                        session.add(db_agent)
+                        await session.commit()
+            return {
+                "project_key": proj.human_key,
+                "agent_name": agent.name,
+                "already_retired": already,
+                "last_active_ts": agent.last_active_ts.isoformat() if agent.last_active_ts else None,
+            }
+
+        try:
+            result = _run_async(_execute_named())
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/]")
+            raise typer.Exit(code=1) from exc
+
+        if result["already_retired"]:
+            console.print(
+                f"[yellow]Agent '{result['agent_name']}' in '{result['project_key']}' "
+                f"is already retired — nothing to do.[/]"
+            )
+        elif dry_run:
+            console.print(
+                f"[cyan][dry-run][/] would retire '{result['agent_name']}' in "
+                f"'{result['project_key']}' (last active {result['last_active_ts']})."
+            )
+        else:
+            console.print(
+                f"[green]Retired agent '{result['agent_name']}' in "
+                f"'{result['project_key']}' (admin override — no token required).[/]"
+            )
+        return
+
+    # --- Age-based sweep (optionally project-scoped) -----------------------
+    threshold_seconds = max(60, int(threshold_hours * 3600))
+
+    async def _execute_sweep() -> list[dict[str, Any]]:
+        await ensure_schema(settings)
+        project_id: Optional[int] = None
+        if project:
+            proj = await _get_project_record(project)
+            project_id = proj.id
+        return await sweep_stale_agents(
+            threshold_seconds=threshold_seconds,
+            project_id=project_id,
+            include_deregistered=include_deregistered,
+            dry_run=dry_run,
+        )
+
+    try:
+        retired = _run_async(_execute_sweep())
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=1) from exc
+
+    verb = "Would retire" if dry_run else "Retired"
+    scope = f"project '{project}'" if project else "all projects"
+    if not retired:
+        console.print(
+            f"[green]No stale agents found in {scope} "
+            f"(threshold {threshold_hours:g}h"
+            f"{', incl. deregistered' if include_deregistered else ''}).[/]"
+        )
+        return
+
+    table = Table(title=f"{verb} {len(retired)} stale agent(s) — {scope}")
+    table.add_column("Project", style="cyan")
+    table.add_column("Agent", style="bold")
+    table.add_column("Reason")
+    table.add_column("Last active", style="dim")
+    for entry in retired:
+        table.add_row(
+            entry["project_key"],
+            entry["agent_name"],
+            entry.get("reason", "idle"),
+            str(entry.get("last_active_ts") or "—"),
+        )
+    console.print(table)
+    if dry_run:
+        console.print("[cyan]Dry run — no changes written. Re-run without --dry-run to apply.[/]")
 
 
 @app.command("hard-delete-agent")

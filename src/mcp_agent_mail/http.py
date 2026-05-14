@@ -1242,7 +1242,15 @@ def build_http_app(settings: Settings, server=None) -> FastAPI:
             threshold = max(60, int(settings.auto_retire_stale_agents_threshold_seconds))
             while True:
                 with contextlib.suppress(Exception):
-                    retired = await sweep_stale_agents(threshold_seconds=threshold)
+                    # include_deregistered=True: also retire agents that recorded
+                    # their own [DEREGISTERED ...] marker but were left
+                    # retired_at=NULL. deregister_agent now sets retired_at
+                    # directly, so this is a regression safety net + historical
+                    # backfill, not the primary path.
+                    retired = await sweep_stale_agents(
+                        threshold_seconds=threshold,
+                        include_deregistered=True,
+                    )
                     if retired:
                         log.info(
                             "auto_retired_stale_agents",
@@ -1253,6 +1261,7 @@ def build_http_app(settings: Settings, server=None) -> FastAPI:
                                     "agent": entry["agent_name"],
                                     "project": entry["project_key"],
                                     "last_active_ts": entry["last_active_ts"],
+                                    "reason": entry.get("reason", "idle"),
                                 }
                                 for entry in retired
                             ],

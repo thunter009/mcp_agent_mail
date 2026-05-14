@@ -3876,6 +3876,8 @@ async def sweep_stale_agents(
     threshold_seconds: int,
     project_id: Optional[int] = None,
     now: Optional[datetime] = None,
+    include_deregistered: bool = False,
+    dry_run: bool = False,
 ) -> list[dict[str, Any]]:
     """Mark agents inactive for `threshold_seconds` as retired.
 
@@ -3892,9 +3894,21 @@ async def sweep_stale_agents(
     - Skips agents whose `last_active_ts` is within the threshold.
     - Optionally scopes to a single project_id.
 
-    Returns one dict per retired agent, with project/agent identifiers
-    plus the `last_active_ts` that triggered retirement, so the caller
-    (background worker, CLI, or test) can log the action.
+    Parameters
+    ----------
+    include_deregistered:
+        Also retire agents whose `task_description` carries the
+        ``[DEREGISTERED at ...]`` marker — regardless of how recently they
+        were active. `deregister_agent` now sets `retired_at` directly, so
+        this is belt-and-suspenders: it backfills historical rows left
+        behind by the old bug and stays a safety net if that fix regresses.
+    dry_run:
+        Compute and return the candidate list without writing `retired_at`.
+
+    Returns one dict per (would-be) retired agent, with project/agent
+    identifiers, the `last_active_ts` that triggered retirement, and a
+    `reason` of ``"deregistered"`` or ``"idle"``, so the caller (background
+    worker, CLI, or test) can log the action.
     """
     await ensure_schema()
     threshold = max(60, int(threshold_seconds))
@@ -3904,9 +3918,15 @@ async def sweep_stale_agents(
 
     retired: list[dict[str, Any]] = []
     async with get_session() as session:
+        stale_clause: Any = cast(Any, Agent.last_active_ts) < cutoff_naive
+        if include_deregistered:
+            stale_clause = _sa_or(
+                stale_clause,
+                cast(Any, Agent.task_description).like("[DEREGISTERED at %"),
+            )
         stmt = select(Agent, Project).join(Project, cast(Any, Agent.project_id) == Project.id).where(
             cast(Any, Agent.retired_at).is_(None),
-            cast(Any, Agent.last_active_ts) < cutoff_naive,
+            stale_clause,
         )
         if project_id is not None:
             stmt = stmt.where(cast(Any, Agent.project_id) == project_id)
@@ -3917,8 +3937,14 @@ async def sweep_stale_agents(
         if not candidates:
             return retired
         for agent, project in candidates:
-            agent.retired_at = naive_now
-            session.add(agent)
+            reason = (
+                "deregistered"
+                if (agent.task_description or "").startswith("[DEREGISTERED at ")
+                else "idle"
+            )
+            if not dry_run:
+                agent.retired_at = naive_now
+                session.add(agent)
             retired.append(
                 {
                     "agent_id": agent.id,
@@ -3926,10 +3952,44 @@ async def sweep_stale_agents(
                     "project_id": project.id,
                     "project_key": project.human_key,
                     "last_active_ts": _iso(agent.last_active_ts),
+                    "reason": reason,
                 }
             )
-        await session.commit()
+        if not dry_run:
+            await session.commit()
     return retired
+
+
+async def _touch_agent_activity(agent: Agent) -> Agent:
+    """Best-effort bump of an agent's `last_active_ts` to "now".
+
+    Called from the authentication chokepoint (`_authenticate_agent` /
+    `_resolve_authenticated_agent`), so any authenticated tool call —
+    `send_message`, `file_reservation_paths`, `renew_file_reservations`,
+    `fetch_inbox`, … — keeps a live session fresh. Before this, `last_active_ts`
+    only moved on register + `send_message`, so the stale-agent sweep could
+    retire a quiet-but-live session that was reserving files / polling inbox
+    without sending mail.
+
+    Failures here are swallowed: a missed activity bump must never break the
+    caller's tool call. Returns the same `agent`, with its in-memory
+    `last_active_ts` updated to match the write.
+    """
+    if agent.id is None:
+        return agent
+    now = _naive_utc()
+    try:
+        async with get_session() as session:
+            await session.execute(
+                _sa_update(Agent)
+                .where(cast(Any, Agent.id) == agent.id)
+                .values(last_active_ts=now)
+            )
+            await session.commit()
+        agent.last_active_ts = now
+    except Exception:  # pragma: no cover - best-effort, never blocks the call
+        logger.debug("activity bump failed for agent id=%s", agent.id, exc_info=True)
+    return agent
 
 
 async def _expire_stale_file_reservations(
@@ -4889,7 +4949,7 @@ def build_mcp_server() -> FastMCP:
         agent = await _get_agent(project, agent_name)
         if _session_is_bound_to_agent(ctx, project, agent):
             _bind_session_agent(ctx, project, agent)
-            return agent
+            return await _touch_agent_activity(agent)
 
         stored_token = (agent.registration_token or "").strip()
         if not stored_token:
@@ -4906,7 +4966,7 @@ def build_mcp_server() -> FastMCP:
                         f"'{agent.name}' via adjacent agent '{peer.name}' in project "
                         f"'{project.human_key}'."
                     )
-                    return agent
+                    return await _touch_agent_activity(agent)
             raise ToolExecutionError(
                 "AUTHENTICATION_REQUIRED",
                 (
@@ -4928,7 +4988,7 @@ def build_mcp_server() -> FastMCP:
                 _wi = await _get_window_identity(project, _wi_uuid)
                 if _wi and _wi.display_name == agent.name:
                     _bind_session_agent(ctx, project, agent)
-                    return agent
+                    return await _touch_agent_activity(agent)
             raise ToolExecutionError(
                 "AUTHENTICATION_REQUIRED",
                 (
@@ -4947,7 +5007,7 @@ def build_mcp_server() -> FastMCP:
             )
 
         _bind_session_agent(ctx, project, agent)
-        return agent
+        return await _touch_agent_activity(agent)
 
     async def _resolve_authenticated_agent(
         ctx: Context,
@@ -4970,7 +5030,7 @@ def build_mcp_server() -> FastMCP:
 
         agent = await _resolve_session_agent_for_project(ctx, project)
         if agent is not None:
-            return agent
+            return await _touch_agent_activity(agent)
 
         raise ToolExecutionError(
             "AUTHENTICATION_REQUIRED",
@@ -5756,6 +5816,12 @@ def build_mcp_server() -> FastMCP:
             db_agent = await session.get(Agent, agent.id)
             if db_agent:
                 db_agent.contact_policy = "block_all"
+                # Set retired_at so the agent actually leaves the active roster.
+                # Without this, deregistered agents stayed retired_at=NULL ("active")
+                # forever — polluting `whois`/active-agent views and (for auto-policy
+                # agents) walling broadcast via the contact-approval check. The
+                # [DEREGISTERED ...] task_description marker is kept for audit.
+                db_agent.retired_at = _naive_utc()
                 db_agent.task_description = f"[DEREGISTERED at {datetime.now(timezone.utc).isoformat()}] {db_agent.task_description}"
                 session.add(db_agent)
                 await session.commit()
@@ -9407,6 +9473,19 @@ def build_mcp_server() -> FastMCP:
         optionally file_reservation paths, and fetch the latest inbox snapshot.
         """
         _validate_program_model(program, model)
+        # Ghost-agent guard: an empty file_reservation_paths list is a caller
+        # mistake that the file_reservation_paths tool rejects. Catch it BEFORE
+        # _get_or_create_agent commits an agent row — otherwise the downstream
+        # error orphans a tokenless "ghost" agent that nobody can ever clear.
+        if file_reservation_paths is not None and not file_reservation_paths:
+            raise ToolExecutionError(
+                "INVALID_ARGUMENT",
+                "file_reservation_paths cannot be an empty list. Omit it entirely "
+                "to start a session without reservations, or pass at least one "
+                "path pattern.",
+                recoverable=True,
+                data={"argument": "file_reservation_paths"},
+            )
         settings = get_settings()
         project = await _ensure_project(human_key)
         if agent_name:
@@ -9431,19 +9510,32 @@ def build_mcp_server() -> FastMCP:
 
             mcp_with_tools = cast(_FastMCPToolGetter, mcp)
             _file_reservation_tool = cast(FunctionTool, await mcp_with_tools.get_tool("file_reservation_paths"))
-            _file_reservation_run = await _file_reservation_tool.run(
-                {
-                    "ctx": ctx,
-                    "project_key": project.human_key,
-                    "agent_name": agent.name,
-                    "paths": file_reservation_paths,
-                    "ttl_seconds": file_reservation_ttl_seconds,
-                    "exclusive": True,
-                    "reason": file_reservation_reason,
-                    "format": "json",
-                }
-            )
-            file_reservations_result = cast(dict[str, Any], _file_reservation_run.structured_content or {})
+            try:
+                _file_reservation_run = await _file_reservation_tool.run(
+                    {
+                        "ctx": ctx,
+                        "project_key": project.human_key,
+                        "agent_name": agent.name,
+                        "paths": file_reservation_paths,
+                        "ttl_seconds": file_reservation_ttl_seconds,
+                        "exclusive": True,
+                        "reason": file_reservation_reason,
+                        "format": "json",
+                    }
+                )
+                file_reservations_result = cast(dict[str, Any], _file_reservation_run.structured_content or {})
+            except Exception as exc:
+                # The agent row + registration token already exist. A reservation
+                # failure must NOT propagate — if it did, the caller would never
+                # receive `token` and the agent becomes an unclearable ghost.
+                # Surface the error in the response instead and let the session proceed.
+                logger.warning(
+                    "macro_start_session: file_reservation step failed for agent %r on %r: %s",
+                    agent.name,
+                    project.human_key,
+                    exc,
+                )
+                file_reservations_result = {"granted": [], "conflicts": [], "error": str(exc)}
 
         inbox_items = await _list_inbox(
             project,

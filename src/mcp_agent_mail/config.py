@@ -281,8 +281,11 @@ class Settings:
     # agents whose sessions ended without an explicit retire_agent call;
     # after ~30+ of these, broadcast send_message starts hitting
     # contact-approval walls because every new agent has to be approved
-    # by all the dead ones. Default: enabled, sweep hourly, 24h
-    # inactivity threshold.
+    # by all the dead ones. Default: enabled, sweep hourly, 12h
+    # inactivity threshold. `last_active_ts` is bumped on every
+    # authenticated tool call (see `_touch_agent_activity`), so a live
+    # session stays fresh as long as it is doing any work — only a
+    # genuinely dormant/crashed session ages past the threshold.
     auto_retire_stale_agents_enabled: bool
     auto_retire_stale_agents_interval_seconds: int
     auto_retire_stale_agents_threshold_seconds: int
@@ -518,8 +521,8 @@ def _build_settings() -> Settings:
             default=3600,
         ),
         auto_retire_stale_agents_threshold_seconds=_int(
-            decouple_config("AUTO_RETIRE_STALE_AGENTS_THRESHOLD_SECONDS", default="86400"),
-            default=86400,
+            decouple_config("AUTO_RETIRE_STALE_AGENTS_THRESHOLD_SECONDS", default="43200"),
+            default=43200,
         ),
     )
 

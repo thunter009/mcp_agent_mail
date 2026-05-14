@@ -3,8 +3,11 @@
 import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
+from sqlalchemy import func, select
 
 from mcp_agent_mail.app import build_mcp_server
+from mcp_agent_mail.db import get_session
+from mcp_agent_mail.models import Agent
 
 
 @pytest.mark.asyncio
@@ -109,7 +112,13 @@ async def test_macro_start_session_without_file_reservations_still_works(isolate
 
 @pytest.mark.asyncio
 async def test_macro_start_session_rejects_explicit_empty_file_reservation_paths(isolated_env):
-    """Explicit empty reservation paths should be validated, not treated as omitted."""
+    """Explicit empty reservation paths should be validated, not treated as omitted.
+
+    Regression guard for the "ghost agent" bug: the empty-list rejection must
+    fire BEFORE the agent row is committed. Previously _get_or_create_agent
+    committed the agent first, then the file_reservation step raised — orphaning
+    a tokenless agent record nobody could ever clear.
+    """
     server = build_mcp_server()
     async with Client(server) as client:
         with pytest.raises(ToolError, match=r"path|empty|required"):
@@ -123,3 +132,8 @@ async def test_macro_start_session_rejects_explicit_empty_file_reservation_paths
                     "file_reservation_paths": [],
                 },
             )
+
+    # No ghost: the failed call must not have left an agent row behind.
+    async with get_session() as session:
+        agent_count = (await session.execute(select(func.count()).select_from(Agent))).scalar_one()
+    assert agent_count == 0, f"empty-reservation failure orphaned {agent_count} ghost agent(s)"

@@ -164,3 +164,117 @@ async def test_sweep_threshold_floor(isolated_env):
         # so the just-registered agent must still NOT retire.
         retired = await sweep_stale_agents(threshold_seconds=0)
         assert retired == []
+
+
+@pytest.mark.asyncio
+async def test_sweep_include_deregistered_retires_regardless_of_age(isolated_env):
+    """include_deregistered=True retires agents carrying the [DEREGISTERED ...]
+    marker even when they were active well within the threshold — the
+    regression safety net / historical backfill path."""
+    server = build_mcp_server()
+    async with Client(server) as client:
+        await client.call_tool("ensure_project", {"human_key": "/staledereg"})
+        names = {}
+        for label, requested in (("fresh", "BrightForest"), ("ghost", "DustyMountain")):
+            res = await client.call_tool(
+                "register_agent",
+                {
+                    "project_key": "Staledereg",
+                    "program": "claude-code",
+                    "model": "opus-4",
+                    "name": requested,
+                    "task_description": f"work for {label}",
+                },
+            )
+            names[label] = res.data["name"]
+
+        # Simulate the historical bug: an agent that recorded its own
+        # deregistration marker but was left retired_at=NULL and recently active.
+        async with get_session() as session:
+            ghost = (
+                await session.execute(
+                    Agent.__table__.select().where(Agent.name == names["ghost"])
+                )
+            ).first()
+            await session.execute(
+                Agent.__table__.update()
+                .where(Agent.id == ghost.id)
+                .values(
+                    task_description="[DEREGISTERED at 2026-01-01T00:00:00+00:00] old work",
+                    retired_at=None,
+                )
+            )
+            await session.commit()
+
+        # Default sweep (age-only) leaves the recently-active ghost alone.
+        assert await sweep_stale_agents(threshold_seconds=86400) == []
+
+        # include_deregistered=True catches it regardless of age.
+        retired = await sweep_stale_agents(
+            threshold_seconds=86400, include_deregistered=True
+        )
+        assert [e["agent_name"] for e in retired] == [names["ghost"]]
+        assert retired[0]["reason"] == "deregistered"
+
+        # The fresh agent (no marker, recently active) is untouched.
+        async with get_session() as session:
+            fresh = (
+                await session.execute(
+                    Agent.__table__.select().where(Agent.name == names["fresh"])
+                )
+            ).first()
+            assert fresh.retired_at is None
+
+
+@pytest.mark.asyncio
+async def test_sweep_dry_run_reports_without_writing(isolated_env):
+    """dry_run=True returns the candidate list but writes no retired_at."""
+    server = build_mcp_server()
+    async with Client(server) as client:
+        await client.call_tool("ensure_project", {"human_key": "/staledry"})
+        result = await client.call_tool(
+            "register_agent",
+            {
+                "project_key": "Staledry",
+                "program": "claude-code",
+                "model": "opus-4",
+                "name": "DozyBadger",
+                "task_description": "Will be backdated",
+            },
+        )
+        target_name = result.data["name"]
+
+        async with get_session() as session:
+            target_id = (
+                (
+                    await session.execute(
+                        Agent.__table__.select().where(Agent.name == target_name)
+                    )
+                )
+                .first()
+                .id
+            )
+            two_days_ago = _naive_utc(datetime.now(timezone.utc) - timedelta(hours=48))
+            await session.execute(
+                Agent.__table__.update()
+                .where(Agent.id == target_id)
+                .values(last_active_ts=two_days_ago, retired_at=None)
+            )
+            await session.commit()
+
+        # Dry run: reported as a candidate...
+        preview = await sweep_stale_agents(threshold_seconds=86400, dry_run=True)
+        assert [e["agent_name"] for e in preview] == [target_name]
+
+        # ...but retired_at was NOT written.
+        async with get_session() as session:
+            row = (
+                await session.execute(
+                    Agent.__table__.select().where(Agent.id == target_id)
+                )
+            ).first()
+            assert row.retired_at is None, "dry_run must not write retired_at"
+
+        # A real sweep still retires it.
+        retired = await sweep_stale_agents(threshold_seconds=86400)
+        assert [e["agent_name"] for e in retired] == [target_name]
