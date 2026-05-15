@@ -9262,11 +9262,17 @@ def build_mcp_server() -> FastMCP:
                 .where(
                     cast(Any, Message.project_id) == project.id,
                     cast(Any, func.lower(Message.topic)) == topic_name.strip().lower(),
-                    _message_visible_to_agent_clause(viewer.id or 0),
                 )
                 .order_by(desc(Message.created_ts))
                 .limit(limit)
             )
+            # NOTE: deliberately NOT filtered by _message_visible_to_agent_clause.
+            # A topic tag opts a message into project-wide visibility — fetch_topic
+            # is a channel-style view ("all messages with this topic, regardless of
+            # recipient", per the docstring and bd-26w). The per-viewer
+            # sender-or-recipient narrowing is only applied below when the caller
+            # explicitly opts in via unread_only=True (where "unread" is only
+            # well-defined for the viewer's own recipient rows).
             if since_ts:
                 since_dt = _parse_iso(since_ts)
                 if since_dt:
