@@ -228,6 +228,15 @@ class Settings:
     # a realistic window to respond.
     contact_pending_ttl_seconds: int
     contact_auto_retry_enabled: bool
+    # When true, agents in the SAME project bypass the contact-approval
+    # wall on the default `auto` policy. A shared project_key means the
+    # same operator's cooperating sessions on one checkout — there is no
+    # trust boundary between them, so the wall (designed for CROSS-project
+    # spam prevention) is pure friction: a fresh live sister on the default
+    # policy otherwise walls every broadcast until handshaked. The explicit
+    # `contacts_only` / `block_all` policies are still enforced, and
+    # cross-project sends are unaffected.
+    contact_same_project_auto_allow: bool
     # Logging
     log_rich_enabled: bool
     log_level: str
@@ -482,6 +491,7 @@ def _build_settings() -> Settings:
         contact_auto_ttl_seconds=_int(decouple_config("CONTACT_AUTO_TTL_SECONDS", default="86400"), default=86400),
         contact_pending_ttl_seconds=_int(decouple_config("CONTACT_PENDING_TTL_SECONDS", default="604800"), default=604800),
         contact_auto_retry_enabled=_bool(decouple_config("CONTACT_AUTO_RETRY_ENABLED", default="true"), default=True),
+        contact_same_project_auto_allow=_bool(decouple_config("CONTACT_SAME_PROJECT_AUTO_ALLOW", default="true"), default=True),
         log_json_enabled=_bool(decouple_config("LOG_JSON_ENABLED", default="false"), default=False),
         output_format_default=decouple_config("MCP_AGENT_MAIL_OUTPUT_FORMAT", default="").strip().lower(),
         toon_default_format=decouple_config("TOON_DEFAULT_FORMAT", default="").strip().lower(),
