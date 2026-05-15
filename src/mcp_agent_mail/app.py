@@ -6805,6 +6805,11 @@ def build_mcp_server() -> FastMCP:
             If true and `to` is empty, expand recipients to all registered agents in the
             project (excluding the sender). Mutually exclusive with explicit `to` recipients.
             Respects contact_policy settings — agents with block_all are skipped.
+            Same-project recipients on the default `auto` policy do NOT require a contact
+            handshake (see ``CONTACT_SAME_PROJECT_AUTO_ALLOW``); the contact-approval wall
+            applies only to cross-project sends and to explicit `contacts_only` / `block_all`
+            recipients. This is what keeps `broadcast` from being walled by a fresh, live
+            sister session that simply hasn't been handshaked yet.
         topic : Optional[str]
             Optional topic tag (alphanumeric + hyphens, max 64 chars). Stored on the message
             for topic-based filtering via fetch_inbox(topic=...) or fetch_topic().
@@ -7238,6 +7243,21 @@ def build_mcp_server() -> FastMCP:
                             "Recipient is not accepting messages.",
                             recoverable=True,
                         )
+                    # Same-project cooperating agents share one project_key —
+                    # by construction the same operator's sessions on one
+                    # checkout, with no trust boundary between them. The
+                    # contact-approval wall exists for CROSS-project spam
+                    # prevention; within a project it is pure friction (a fresh
+                    # live sister on the default `auto` policy otherwise walls
+                    # every broadcast until handshaked). Auto-allow same-project
+                    # recipients on the default `auto` policy — `contacts_only`
+                    # and `block_all` remain explicit, enforced opt-outs.
+                    if (
+                        settings_local.contact_same_project_auto_allow
+                        and rec_policy == "auto"
+                        and getattr(rec, "project_id", None) == project.id
+                    ):
+                        continue
                     # contacts_only or auto -> must have approved link or prior contact within TTL
                     recent_ok = rec.name in recent_ok_names
                     if rec_policy == "auto" and recent_ok:
@@ -8469,6 +8489,15 @@ def build_mcp_server() -> FastMCP:
                             "Recipient is not accepting messages.",
                             recoverable=True,
                         )
+                    # Same-project cooperating agents share one project_key and
+                    # have no trust boundary between them — auto-allow on the
+                    # default `auto` policy (see send_message for rationale).
+                    if (
+                        settings_local.contact_same_project_auto_allow
+                        and rec_policy == "auto"
+                        and getattr(rec, "project_id", None) == project.id
+                    ):
+                        continue
                     if rec_policy == "auto" and rec.name in recent_ok_names:
                         continue
                     if rec.id is not None and rec.id in approved_link_ids:

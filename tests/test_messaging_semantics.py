@@ -272,6 +272,13 @@ async def test_send_message_auto_contact_requests_pending_approval_without_targe
         )
         green_token = green.data["registration_token"]
         blue_token = blue.data["registration_token"]
+        # Same-project agents on the default `auto` policy no longer require a
+        # contact handshake; tighten BlueLake to `contacts_only` so this test
+        # still exercises the auto_contact_if_blocked / pending-request path.
+        await bootstrap_client.call_tool(
+            "set_contact_policy",
+            {"project_key": "/security/auto-contact-pending", "agent_name": "BlueLake", "policy": "contacts_only"},
+        )
 
     async with Client(server) as sender_client:
         with pytest.raises(ToolError) as exc_info:
@@ -330,6 +337,12 @@ async def test_send_message_explicit_false_disables_local_auto_contact(isolated_
         )
         green_token = green.data["registration_token"]
         blue_token = blue.data["registration_token"]
+        # `contacts_only` keeps the contact wall in play; same-project `auto`
+        # recipients are auto-allowed and would not exercise the block path.
+        await bootstrap_client.call_tool(
+            "set_contact_policy",
+            {"project_key": "/security/auto-contact-disabled", "agent_name": "BlueLake", "policy": "contacts_only"},
+        )
 
     async with Client(server) as sender_client:
         with pytest.raises(ToolError):
@@ -384,6 +397,13 @@ async def test_send_message_auto_contact_auto_approves_when_target_is_authentica
         await client.call_tool(
             "register_agent",
             {"project_key": "/security/auto-contact-approved", "program": "codex", "model": "gpt-5", "name": "BlueLake"},
+        )
+        # `contacts_only` keeps the contact wall in play so the in-session
+        # auto-approval path is exercised; same-project `auto` recipients are
+        # auto-allowed and would never reach the handshake branch.
+        await client.call_tool(
+            "set_contact_policy",
+            {"project_key": "/security/auto-contact-approved", "agent_name": "BlueLake", "policy": "contacts_only"},
         )
 
         result = await client.call_tool(
