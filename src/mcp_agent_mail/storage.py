@@ -482,8 +482,11 @@ def cleanup_leaked_lockfile_fds() -> int:
             # ``/tmp/.lockfile-fooXYZ``, ``/var/log/log.locked-archive``) are
             # never matched.  All AsyncFileLock paths this project creates end
             # with ``.lock`` (e.g. ``.archive.lock``, ``.commit.lock``,
-            # ``<thread>.md.lock``) or use a ``.lock.<suffix>`` extension
-            # style — both are covered by checking the basename.
+            # ``<thread>.md.lock``).  The ``".lock." in base`` branch is
+            # currently dead code — no production path uses that naming — but
+            # is kept as a defensive guard against future ``.lock.<suffix>``
+            # patterns (e.g. a hypothetical ``.archive.lock.bak`` backup file)
+            # that might be introduced later without updating this filter.
             # On Linux, /proc/self/fd symlinks for deleted inodes carry a
             # " (deleted)" suffix — strip it before basename extraction so the
             # ".lock" ending is visible.
