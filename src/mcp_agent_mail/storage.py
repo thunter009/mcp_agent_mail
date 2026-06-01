@@ -27,6 +27,7 @@ import re
 import sys
 import threading as _threading
 import time
+import weakref
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -401,7 +402,15 @@ _PROCESS_LOCK_OWNERS: dict[tuple[int, str], int] = {}
 # ---------------------------------------------------------------------------
 # Lock-FD telemetry: track active AsyncFileLock instances for leak detection
 # ---------------------------------------------------------------------------
-_ACTIVE_LOCK_INSTANCES: dict[int, "AsyncFileLock"] = {}  # id(lock) -> lock
+# WeakValueDictionary (not a plain dict): the registry must NOT keep instances
+# alive. A plain dict strong-refs every lock, pinning refcount >= 1, so the
+# __del__ that pops the entry can never fire — entries accumulate forever
+# (observed 560 "active_locks" at idle, 2026-05-16). Weak values let the GC
+# reclaim released locks normally and the entry is dropped automatically; the
+# __del__ pop(id(self), None) below then becomes a harmless redundant no-op.
+_ACTIVE_LOCK_INSTANCES: "weakref.WeakValueDictionary[int, AsyncFileLock]" = (
+    weakref.WeakValueDictionary()
+)  # id(lock) -> lock
 _LOCK_INSTANCES_GUARD = _threading.Lock()
 _LOCK_FD_LEAKED_TOTAL: int = 0  # monotonic counter of detected leaks
 
