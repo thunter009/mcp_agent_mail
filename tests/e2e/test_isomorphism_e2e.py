@@ -95,6 +95,7 @@ async def _measure_file_reservation_commit_delta(
     *,
     project_key: str,
     agent_name: str,
+    registration_token: str | None = None,
 ) -> int:
     """Return number of archive commits added after a file_reservation_paths call."""
     settings = get_settings()
@@ -102,17 +103,19 @@ async def _measure_file_reservation_commit_delta(
     archive = await ensure_archive(settings, slug)
     before = list(archive.repo.iter_commits())
     async with Client(server) as client:
-        await client.call_tool(
-            "file_reservation_paths",
-            {
-                "project_key": project_key,
-                "agent_name": agent_name,
-                "paths": ["src/a.py", "src/b.py"],
-                "ttl_seconds": 3600,
-                "exclusive": True,
-                "reason": "phase2-commit-batch",
-            },
-        )
+        args: dict[str, Any] = {
+            "project_key": project_key,
+            "agent_name": agent_name,
+            "paths": ["src/a.py", "src/b.py"],
+            "ttl_seconds": 3600,
+            "exclusive": True,
+            "reason": "phase2-commit-batch",
+        }
+        # This runs in a fresh MCP session (not bound to the agent), so the
+        # privileged file_reservation_paths call needs the agent's token.
+        if registration_token:
+            args["registration_token"] = registration_token
+        await client.call_tool("file_reservation_paths", args)
     after = list(archive.repo.iter_commits())
     return len(after) - len(before)
 
@@ -264,6 +267,9 @@ def _touch_bundle_files(bundle_root: Path, base: float) -> None:
 async def test_isomorphism_e2e_suite(isolated_env, tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("WORKTREES_ENABLED", "1")
     monkeypatch.setenv("INLINE_IMAGE_MAX_BYTES", "1024")
+    # The suite attaches files from pytest's absolute tmp_path, so opt into
+    # absolute attachment paths (disabled by default as a hardening measure).
+    monkeypatch.setenv("ALLOW_ABSOLUTE_ATTACHMENT_PATHS", "true")
     monkeypatch.setenv("LLM_ENABLED", "false")
     monkeypatch.setenv("MESSAGING_AUTO_HANDSHAKE_ON_BLOCK", "false")
     monkeypatch.setenv("TOOLS_LOG_ENABLED", "false")
@@ -304,6 +310,15 @@ async def test_isomorphism_e2e_suite(isolated_env, tmp_path: Path, monkeypatch) 
             "set_contact_policy",
             {"project_key": beta_key, "agent_name": "BlueLake", "policy": "open"},
         )
+        # Alpha recipients accept unsolicited mail (open policy) so the messaging
+        # phase's sends aren't blocked by contact gating, which is enforced even
+        # within a project. The contacts phase below exercises the gated
+        # request/approve/deny flow separately (with auto-handshake disabled).
+        for name in ("RedStone", "GreenCastle", "StormyCanyon"):
+            await client.call_tool(
+                "set_contact_policy",
+                {"project_key": alpha_key, "agent_name": name, "policy": "open"},
+            )
 
         render_phase(console, "messaging", {"subject": "Launch Plan", "thread": "THREAD-1"})
         small_path = tmp_path / "small.png"
@@ -462,6 +477,7 @@ async def test_isomorphism_e2e_suite(isolated_env, tmp_path: Path, monkeypatch) 
             server,
             project_key=perf_key,
             agent_name=perf_agent_name,
+            registration_token=perf_agent.get("registration_token"),
         )
         assert commit_delta == 1, f"Expected 1 commit, got {commit_delta}"
 
@@ -601,7 +617,7 @@ async def test_isomorphism_e2e_suite(isolated_env, tmp_path: Path, monkeypatch) 
             await client.read_resource(f"resource://message/{followup_id}?project={alpha_key}")
         )
         beta_message_resource = _parse_resource_json(
-            await client.read_resource(f"resource://message/{beta_message_id}?project={beta_key}")
+            await client.read_resource(f"resource://message/{beta_message_id}?project={beta_key}&agent=BlueLake")
         )
 
         inbox_since_ts = (base_time + timedelta(seconds=200 + followup_id - 1)).isoformat()
@@ -841,6 +857,13 @@ async def test_isomorphism_e2e_suite(isolated_env, tmp_path: Path, monkeypatch) 
         approve_contact["expires_ts"] = _iso_at(base_time, offset_seconds=950 + contact_index[approve_contact["to"]])
     if deny_request.get("to") in contact_index:
         deny_request["expires_ts"] = _iso_at(base_time, offset_seconds=950 + contact_index[deny_request["to"]])
+    # The contact request/deny notifications carry a wall-clock created_ts that
+    # the deterministic timestamp stabilization above doesn't reach (it lives in
+    # a nested notification_message added after this scrubbing was written).
+    for _obj in (request_contact, approve_contact, deny_request):
+        _nm = _obj.get("notification_message") if isinstance(_obj, dict) else None
+        if isinstance(_nm, dict) and _nm.get("created_ts") and _obj.get("to") in contact_index:
+            _nm["created_ts"] = _iso_at(base_time, offset_seconds=970 + contact_index[_obj["to"]])
 
     cross_deliveries = cross_send.get("deliveries") if isinstance(cross_send, dict) else None
     if isinstance(cross_deliveries, list) and cross_deliveries:

@@ -20,19 +20,25 @@
             "cc": [],
             "created_ts": "2025-01-01T00:03:26+00:00",
             "from": "BlueLake",
+            "from_address": "project:alpha#BlueLake",
+            "from_project": "/alpha",
+            "from_project_slug": "alpha",
             "id": 6,
             "importance": "normal",
             "project_id": 2,
-            "sender_id": 7,
+            "reply_to": null,
+            "sender_id": 1,
             "subject": "Cross Project",
             "thread_id": null,
             "to": [
               "PurpleBear"
-            ]
+            ],
+            "topic": null
           },
           "project": "/beta"
         }
-      ]
+      ],
+      "verified_sender": true
     },
     "denied_error": {
       "error_type": "ToolError",
@@ -49,6 +55,29 @@
       "expires_ts": "2025-01-01T00:15:51+00:00",
       "from": "BlueLake",
       "from_project": "/alpha",
+      "notification_message": {
+        "ack_required": true,
+        "attachments": [],
+        "bcc": [],
+        "body_md": "deny-case",
+        "cc": [],
+        "created_ts": "2025-01-01T00:16:11+00:00",
+        "from": "BlueLake",
+        "from_address": "project:alpha#BlueLake",
+        "from_project": "/alpha",
+        "from_project_slug": "alpha",
+        "id": 5,
+        "importance": "normal",
+        "project_id": 2,
+        "reply_to": null,
+        "sender_id": 1,
+        "subject": "Contact request from BlueLake",
+        "thread_id": null,
+        "to": [
+          "JadePond"
+        ],
+        "topic": null
+      },
       "status": "pending",
       "to": "JadePond",
       "to_project": "/beta"
@@ -65,9 +94,9 @@
         "updated_ts": "2025-01-01T00:15:01+00:00"
       },
       {
-        "allows_messaging": true,
+        "allows_messaging": false,
         "expires_ts": "2025-01-01T00:15:52+00:00",
-        "is_expired": false,
+        "is_expired": true,
         "reason": "e2e",
         "status": "approved",
         "to": "PurpleBear",
@@ -79,6 +108,29 @@
       "expires_ts": "2025-01-01T00:15:52+00:00",
       "from": "BlueLake",
       "from_project": "/alpha",
+      "notification_message": {
+        "ack_required": true,
+        "attachments": [],
+        "bcc": [],
+        "body_md": "e2e",
+        "cc": [],
+        "created_ts": "2025-01-01T00:16:12+00:00",
+        "from": "BlueLake",
+        "from_address": "project:alpha#BlueLake",
+        "from_project": "/alpha",
+        "from_project_slug": "alpha",
+        "id": 4,
+        "importance": "normal",
+        "project_id": 2,
+        "reply_to": null,
+        "sender_id": 1,
+        "subject": "Contact request from BlueLake",
+        "thread_id": null,
+        "to": [
+          "PurpleBear"
+        ],
+        "topic": null
+      },
       "status": "pending",
       "to": "PurpleBear",
       "to_project": "/beta"
@@ -105,8 +157,12 @@
           "expires_ts": "2025-01-01T00:10:02+00:00",
           "id": 2,
           "path_pattern": "src/core.py",
-          "reason": "conflict"
+          "reason": "conflict",
+          "reused": false
         }
+      ],
+      "warnings": [
+        "enforcement_off_for_code_paths: 1 of 1 reserved paths are code-repo paths; server-side exclusivity is advisory only. Install the pre-commit guard via `install_precommit_guard` for the authoritative reservation gate."
       ]
     },
     "initial_reservation": {
@@ -117,8 +173,12 @@
           "expires_ts": "2025-01-01T00:10:01+00:00",
           "id": 1,
           "path_pattern": "src/core.py",
-          "reason": "e2e"
+          "reason": "e2e",
+          "reused": false
         }
+      ],
+      "warnings": [
+        "enforcement_off_for_code_paths: 1 of 1 reserved paths are code-repo paths; server-side exclusivity is advisory only. Install the pre-commit guard via `install_precommit_guard` for the authoritative reservation gate."
       ]
     },
     "post_release": {
@@ -126,16 +186,21 @@
       "granted": [
         {
           "exclusive": true,
-          "expires_ts": "2025-01-01T00:10:03+00:00",
-          "id": 3,
+          "expires_ts": "2025-01-01T00:10:02+00:00",
+          "id": 2,
           "path_pattern": "src/core.py",
-          "reason": "after-release"
+          "reason": "after-release",
+          "reused": true
         }
+      ],
+      "warnings": [
+        "enforcement_off_for_code_paths: 1 of 1 reserved paths are code-repo paths; server-side exclusivity is advisory only. Install the pre-commit guard via `install_precommit_guard` for the authoritative reservation gate."
       ]
     },
     "snapshot": [
       {
         "agent": "BlueLake",
+        "agent_id": 1,
         "created_ts": "2025-01-01T00:08:21+00:00",
         "exclusive": true,
         "expires_ts": "2025-01-01T00:10:01+00:00",
@@ -156,6 +221,7 @@
       },
       {
         "agent": "GreenCastle",
+        "agent_id": 3,
         "created_ts": "2025-01-01T00:08:22+00:00",
         "exclusive": true,
         "expires_ts": "2025-01-01T00:10:02+00:00",
@@ -165,28 +231,8 @@
         "last_git_activity_ts": null,
         "last_mail_activity_ts": null,
         "path_pattern": "src/core.py",
-        "reason": "conflict",
-        "released_ts": "2025-01-01T00:11:42+00:00",
-        "stale": false,
-        "stale_reasons": [
-          "agent_inactive>1800s",
-          "no_recent_mail_activity>900s",
-          "path_pattern_unmatched"
-        ]
-      },
-      {
-        "agent": "GreenCastle",
-        "created_ts": "2025-01-01T00:08:23+00:00",
-        "exclusive": true,
-        "expires_ts": "2025-01-01T00:10:03+00:00",
-        "id": 3,
-        "last_agent_activity_ts": "2025-01-01T00:02:03+00:00",
-        "last_filesystem_activity_ts": null,
-        "last_git_activity_ts": null,
-        "last_mail_activity_ts": null,
-        "path_pattern": "src/core.py",
         "reason": "after-release",
-        "released_ts": "2025-01-01T00:11:43+00:00",
+        "released_ts": "2025-01-01T00:11:42+00:00",
         "stale": false,
         "stale_reasons": [
           "agent_inactive>1800s",
@@ -202,10 +248,23 @@
       "canonical_path": "/alpha",
       "core_ignorecase": null,
       "created_at": "2025-01-01T00:00:01+00:00",
-      "discovery": null,
       "git_common_dir": null,
       "human_key": "/alpha",
       "id": 1,
+      "identity": {
+        "branch": null,
+        "canonical_path": "/alpha",
+        "core_ignorecase": null,
+        "discovery": null,
+        "git_common_dir": null,
+        "human_key": "/alpha",
+        "identity_mode_used": "dir",
+        "normalized_remote": null,
+        "project_uid": "a164c0c98d6a913b0814",
+        "repo_root": null,
+        "slug": "alpha",
+        "worktree_name": null
+      },
       "identity_mode_used": "dir",
       "normalized_remote": null,
       "project_uid": "a164c0c98d6a913b0814",
@@ -218,10 +277,23 @@
       "canonical_path": "/beta",
       "core_ignorecase": null,
       "created_at": "2025-01-01T00:00:02+00:00",
-      "discovery": null,
       "git_common_dir": null,
       "human_key": "/beta",
       "id": 2,
+      "identity": {
+        "branch": null,
+        "canonical_path": "/beta",
+        "core_ignorecase": null,
+        "discovery": null,
+        "git_common_dir": null,
+        "human_key": "/beta",
+        "identity_mode_used": "dir",
+        "normalized_remote": null,
+        "project_uid": "a78ae1d5150177e0bb6f",
+        "repo_root": null,
+        "slug": "beta",
+        "worktree_name": null
+      },
       "identity_mode_used": "dir",
       "normalized_remote": null,
       "project_uid": "a78ae1d5150177e0bb6f",
@@ -349,7 +421,7 @@
             "data_base64": "UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoEAAQAAUAmJaACdLoB+AADsAD+8ut//NgVzXPv9//S4P0uD9Lg/9KQAAA=",
             "height": 4,
             "media_type": "image/webp",
-            "sha1": "9fa5713ea2cb17dc17e8473b45a4bbcb2d17670f",
+            "sha1": "4e27e1f355325927f676ffdd5258b33f812edf7296b072e4d2a6075c0498fdf5",
             "type": "inline",
             "width": 4
           },
@@ -358,7 +430,7 @@
             "data_base64": "UklGRmwAAABXRUJQVlA4IGAAAAAwBwCdASqAAIAAPm02mUmkIyKhIIgAgA2JaW7hdJlwH4AfgAABPbYi8yr89sReIKjntiLxBUc9sReIKjntiLxBT0AA/v3xB//+0shCuv+g1//9ehwuyvxCYaOpSAAAAAA=",
             "height": 128,
             "media_type": "image/webp",
-            "sha1": "21dad3ecf5af553fe9b26dadeaca22f9ba64b8d5",
+            "sha1": "2d0923381b69ce07e43485a14e01b7a2c8985b5d626aa90d24ad79da7d279582",
             "type": "inline",
             "width": 128
           }
@@ -370,9 +442,11 @@
         "importance": "normal",
         "kind": "to",
         "project_id": 1,
+        "reply_to": null,
         "sender_id": 1,
         "subject": "Launch Plan",
-        "thread_id": "THREAD-1"
+        "thread_id": "THREAD-1",
+        "topic": null
       },
       {
         "ack_required": false,
@@ -384,9 +458,11 @@
         "importance": "normal",
         "kind": "to",
         "project_id": 1,
+        "reply_to": null,
         "sender_id": 1,
         "subject": "Follow Up",
-        "thread_id": "THREAD-1"
+        "thread_id": "THREAD-1",
+        "topic": null
       }
     ],
     "fetch_inbox_since": "2025-01-01T00:03:21",
@@ -406,7 +482,7 @@
               "data_base64": "UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoEAAQAAUAmJaACdLoB+AADsAD+8ut//NgVzXPv9//S4P0uD9Lg/9KQAAA=",
               "height": 4,
               "media_type": "image/webp",
-              "sha1": "9fa5713ea2cb17dc17e8473b45a4bbcb2d17670f",
+              "sha1": "4e27e1f355325927f676ffdd5258b33f812edf7296b072e4d2a6075c0498fdf5",
               "type": "inline",
               "width": 4
             },
@@ -415,41 +491,37 @@
               "data_base64": "UklGRmwAAABXRUJQVlA4IGAAAAAwBwCdASqAAIAAPm02mUmkIyKhIIgAgA2JaW7hdJlwH4AfgAABPbYi8yr89sReIKjntiLxBUc9sReIKjntiLxBT0AA/v3xB//+0shCuv+g1//9ehwuyvxCYaOpSAAAAAA=",
               "height": 128,
               "media_type": "image/webp",
-              "sha1": "21dad3ecf5af553fe9b26dadeaca22f9ba64b8d5",
+              "sha1": "2d0923381b69ce07e43485a14e01b7a2c8985b5d626aa90d24ad79da7d279582",
               "type": "inline",
               "width": 128
             }
           ],
-          "commit": {
-            "hexsha": "<commit_hexsha>",
-            "summary": "mail: BlueLake -> RedStone, GreenCastle, StormyCanyon | Launch Plan"
-          },
           "created_ts": "2025-01-01T00:03:21+00:00",
           "from": "BlueLake",
           "id": 1,
           "importance": "normal",
           "kind": "to",
           "project_id": 1,
+          "reply_to": null,
           "sender_id": 1,
           "subject": "Launch Plan",
-          "thread_id": "THREAD-1"
+          "thread_id": "THREAD-1",
+          "topic": null
         },
         {
           "ack_required": false,
           "attachments": [],
-          "commit": {
-            "hexsha": "<commit_hexsha>",
-            "summary": "mail: BlueLake -> RedStone | Follow Up"
-          },
           "created_ts": "2025-01-01T00:03:22+00:00",
           "from": "BlueLake",
           "id": 2,
           "importance": "normal",
           "kind": "to",
           "project_id": 1,
+          "reply_to": null,
           "sender_id": 1,
           "subject": "Follow Up",
-          "thread_id": "THREAD-1"
+          "thread_id": "THREAD-1",
+          "topic": null
         }
       ],
       "project": "/alpha"
@@ -470,7 +542,7 @@
               "data_base64": "UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoEAAQAAUAmJaACdLoB+AADsAD+8ut//NgVzXPv9//S4P0uD9Lg/9KQAAA=",
               "height": 4,
               "media_type": "image/webp",
-              "sha1": "9fa5713ea2cb17dc17e8473b45a4bbcb2d17670f",
+              "sha1": "4e27e1f355325927f676ffdd5258b33f812edf7296b072e4d2a6075c0498fdf5",
               "type": "inline",
               "width": 4
             },
@@ -479,7 +551,7 @@
               "data_base64": "UklGRmwAAABXRUJQVlA4IGAAAAAwBwCdASqAAIAAPm02mUmkIyKhIIgAgA2JaW7hdJlwH4AfgAABPbYi8yr89sReIKjntiLxBUc9sReIKjntiLxBT0AA/v3xB//+0shCuv+g1//9ehwuyvxCYaOpSAAAAAA=",
               "height": 128,
               "media_type": "image/webp",
-              "sha1": "21dad3ecf5af553fe9b26dadeaca22f9ba64b8d5",
+              "sha1": "2d0923381b69ce07e43485a14e01b7a2c8985b5d626aa90d24ad79da7d279582",
               "type": "inline",
               "width": 128
             }
@@ -495,12 +567,14 @@
           "id": 1,
           "importance": "normal",
           "project_id": 1,
+          "reply_to": null,
           "sender_id": 1,
           "subject": "Launch Plan",
           "thread_id": "THREAD-1",
           "to": [
             "RedStone"
-          ]
+          ],
+          "topic": null
         },
         {
           "ack_required": false,
@@ -512,12 +586,14 @@
           "id": 2,
           "importance": "normal",
           "project_id": 1,
+          "reply_to": null,
           "sender_id": 1,
           "subject": "Follow Up",
           "thread_id": "THREAD-1",
           "to": [
             "RedStone"
-          ]
+          ],
+          "topic": null
         }
       ],
       "project": "/alpha"
@@ -533,9 +609,11 @@
       "id": 3,
       "importance": "normal",
       "project_id": 2,
+      "reply_to": null,
       "sender_id": 5,
       "subject": "Beta Hello",
-      "thread_id": "THREAD-1"
+      "thread_id": "THREAD-1",
+      "topic": null
     },
     "followup": {
       "ack_required": false,
@@ -546,9 +624,11 @@
       "id": 2,
       "importance": "normal",
       "project_id": 1,
+      "reply_to": null,
       "sender_id": 1,
       "subject": "Follow Up",
-      "thread_id": "THREAD-1"
+      "thread_id": "THREAD-1",
+      "topic": null
     },
     "message": {
       "ack_required": true,
@@ -562,7 +642,7 @@
           "data_base64": "UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoEAAQAAUAmJaACdLoB+AADsAD+8ut//NgVzXPv9//S4P0uD9Lg/9KQAAA=",
           "height": 4,
           "media_type": "image/webp",
-          "sha1": "9fa5713ea2cb17dc17e8473b45a4bbcb2d17670f",
+          "sha1": "4e27e1f355325927f676ffdd5258b33f812edf7296b072e4d2a6075c0498fdf5",
           "type": "inline",
           "width": 4
         },
@@ -571,7 +651,7 @@
           "data_base64": "UklGRmwAAABXRUJQVlA4IGAAAAAwBwCdASqAAIAAPm02mUmkIyKhIIgAgA2JaW7hdJlwH4AfgAABPbYi8yr89sReIKjntiLxBUc9sReIKjntiLxBT0AA/v3xB//+0shCuv+g1//9ehwuyvxCYaOpSAAAAAA=",
           "height": 128,
           "media_type": "image/webp",
-          "sha1": "21dad3ecf5af553fe9b26dadeaca22f9ba64b8d5",
+          "sha1": "2d0923381b69ce07e43485a14e01b7a2c8985b5d626aa90d24ad79da7d279582",
           "type": "inline",
           "width": 128
         }
@@ -582,9 +662,11 @@
       "id": 1,
       "importance": "normal",
       "project_id": 1,
+      "reply_to": null,
       "sender_id": 1,
       "subject": "Launch Plan",
-      "thread_id": "THREAD-1"
+      "thread_id": "THREAD-1",
+      "topic": null
     }
   },
   "product_bus": {
@@ -599,9 +681,11 @@
         "importance": "normal",
         "kind": "to",
         "project_id": 2,
+        "reply_to": null,
         "sender_id": 5,
         "subject": "Beta Hello",
-        "thread_id": "THREAD-1"
+        "thread_id": "THREAD-1",
+        "topic": null
       }
     ],
     "link_alpha": {
@@ -758,13 +842,13 @@
       }
     },
     "preview_status": {
-      "files_indexed": 24,
-      "last_modified_iso": "2024-08-30T06:40:22+00:00",
-      "last_modified_ns": 1725000022000000000,
+      "files_indexed": 23,
+      "last_modified_iso": "2024-08-30T06:40:21+00:00",
+      "last_modified_ns": 1725000021000000000,
       "manifest_iso": "2024-08-30T06:40:06+00:00",
       "manifest_ns": 1725000006000000000,
       "manual_token": 0,
-      "signature": "c59d7b3c965d2d4edc9bcaa24ddc4d10f7d1cdc4fdb32912e3b1d6dfcaef0085"
+      "signature": "787c4295ff40a968ae55b7b0ab2bf1085ec07e296b24347741612fbe1a8b74e6"
     },
     "scrub_summary": {
       "ack_flags_cleared": 6,
@@ -774,7 +858,7 @@
       "attachments_cleared": 0,
       "attachments_sanitized": 0,
       "bodies_redacted": 0,
-      "file_reservations_removed": 5,
+      "file_reservations_removed": 4,
       "preset": "standard",
       "pseudonym_salt": "standard",
       "recipients_cleared": 8,
