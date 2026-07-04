@@ -446,9 +446,29 @@ async def _get_project_record(identifier: str) -> Project:
         )
         result = await session.execute(stmt)
         project = result.scalars().first()
-        if not project:
-            raise ValueError(f"Project '{raw_identifier}' not found")
-        return project
+        if project:
+            return project
+
+        # Bare-name fallback: operators pass 'off-earth-data' while slugs are
+        # full-path ('users-thom-...-off-earth-data'). Resolve a UNIQUE slug
+        # suffix; ambiguity is an error listing candidates, never a guess.
+        # Exact matches above always win. Applies to every _get_project_record
+        # caller (sweep-stale-agents, hard-delete-agent, ...).
+        suffix = f"-{slug}"
+        candidates_result = await session.execute(select(Project))
+        candidates = [
+            p for p in candidates_result.scalars().all()
+            if p.slug == slug or p.slug.endswith(suffix)
+        ]
+        if len(candidates) == 1:
+            return candidates[0]
+        if len(candidates) > 1:
+            keys = ", ".join(sorted(p.human_key for p in candidates))
+            raise ValueError(
+                f"Project '{raw_identifier}' is ambiguous; candidates: {keys}. "
+                "Pass the full human_key or slug."
+            )
+        raise ValueError(f"Project '{raw_identifier}' not found")
 
 
 async def _get_agent_record(project: Project, agent_name: str) -> Agent:
